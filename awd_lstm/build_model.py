@@ -18,13 +18,13 @@ def get_model(corpus, args):
     params = list(model.parameters()) + list(criterion.parameters())
     return model, criterion, params
 
-def evaluate(model, criterion, args, data_source):
+def evaluate(model, criterion, args, data_source, batch_size=10):
     # Turn on evaluation mode which disables dropout.
     model.eval()
     if args["model_type"]== 'QRNN':
         model.reset()
     total_loss = 0
-    hidden = model.init_hidden(args["batch_size"])
+    hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args["bptt"]):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
@@ -78,7 +78,7 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
         total_loss += raw_loss.data
         optimizer.param_groups[0]['lr'] = lr2
         if batch % args["log_interval"]== 0 and batch > 0:
-            cur_loss = total_loss.item() / args["log_interval "]
+            cur_loss = total_loss.item() / args["log_interval"]
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}'.format(
@@ -136,7 +136,7 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
                     print('Saving model (new best validation)')
                     stored_loss = val_loss
 
-                if args.optimizer == 'sgd' and 't0' not in optimizer.param_groups[0] and (
+                if args["optimizer"] == 'sgd' and 't0' not in optimizer.param_groups[0] and (
                        len(best_val_loss) > args["nonmono"] and val_loss > min(best_val_loss[:-args["nonmono"]])):
                    print('Switching to ASGD')
                    optimizer = torch.optim.ASGD(model.parameters(), lr=args["lr"], t0=0, lambd=0.,
@@ -156,7 +156,7 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
         print('Exiting from training early')
 
     # Load the best saved model.
-    if os.exists(save_path):
+    if os.path.exists(save_path):
         model, criterion, params = model_load(save_path)
         # Run on test data.
         test_loss = evaluate(model, criterion, args, test_data, args["test_batch_size"])

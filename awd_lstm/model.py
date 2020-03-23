@@ -96,7 +96,6 @@ class RNNModel(nn.Module):
 
         #  The below line was present in rizwan main.py to check baseline result from awd-lstm but was not present in the original awd-lstm
         decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))
-        #  print("decoded : ", decoded.size())
         result = decoded.view(output.size(0)*output.size(1), -1)
         #  result = output.view(output.size(0)*output.size(1), output.size(2))
         if return_h:
