@@ -2,13 +2,13 @@ import torch
 
 def model_save(fn, model, criterion, optimizer):
     with open(fn, 'wb') as f:
-        torch.save([model, criterion, optimizer], f)
+        torch.save([model.state_dict(), criterion, optimizer], f)
 
 
-def model_load(fn):
+def model_load(fn, device = 'gpu'):
     with open(fn, 'rb') as f:
-        model, criterion, optimizer = torch.load(f)
-        return model, criterion, optimizer
+        model_state_dict, criterion, optimizer = torch.load(f, map_location=device)
+        return model_state_dict, criterion, optimizer
 
 def repackage_hidden(h):
     """Wraps hidden states in new Tensors,

@@ -157,7 +157,8 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
 
     # Load the best saved model.
     if os.path.exists(save_path):
-        model, criterion, params = model_load(save_path)
+        model_state_dict, criterion, params = model_load(save_path)
+        model.load_state_dict(model_state_dict)
         # Run on test data.
         test_loss = evaluate(model, criterion, args, test_data, args["test_batch_size"])
         print('=' * 89)
