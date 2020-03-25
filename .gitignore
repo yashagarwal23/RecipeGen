@@ -3,3 +3,5 @@ corpus.*
 data_entity_composite/
 data_without_type/
 data_with_type/
+*.pt
+test.py

@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from embed_regularize import embedded_dropout
-from locked_dropout import LockedDropout
-from weight_drop import WeightDrop
+from awd_lstm.embed_regularize import embedded_dropout
+from awd_lstm.locked_dropout import LockedDropout
+from awd_lstm.weight_drop import WeightDrop
 
 
 class EntityCompositeRNNModel(nn.Module):
@@ -24,15 +24,15 @@ class EntityCompositeRNNModel(nn.Module):
                 ninp if tie_weights else nhid), 1, dropout=0) for l in range(nlayers)]
             #  if wdrop:
             #  self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
-        # if rnn_type == 'GRU':
-        #     self.rnns = [torch.nn.GRU(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else ninp, 1, dropout=0) for l in range(nlayers)]
-        #     if wdrop:
-        #         self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
-        # elif rnn_type == 'QRNN':
-        #     from torchqrnn import QRNNLayer
-        #     self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
-        #     for rnn in self.rnns:
-        #         rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
+        if rnn_type == 'GRU':
+           self.rnns = [torch.nn.GRU(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else ninp, 1, dropout=0) for l in range(nlayers)]
+           if wdrop:
+               self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
+        elif rnn_type == 'QRNN':
+           from torchqrnn import QRNNLayer
+           self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
+           for rnn in self.rnns:
+               rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
         print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
@@ -103,7 +103,7 @@ class EntityCompositeRNNModel(nn.Module):
 
         decoded = self.decoder(output.view(
             output.size(0)*output.size(1), output.size(2)))
-        result = decoded.view(output.size(0), output.size(1), decoded.size(1))
+        result = decoded.view(output.size(0)*output.size(1), -1)
 
         #  result = output.view(output.size(0)*output.size(1), output.size(2))
         if return_h:
