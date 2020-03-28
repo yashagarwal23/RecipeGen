@@ -9,7 +9,6 @@ from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, mo
 
 def get_model(corpus, args):
     n_tokens = len(corpus.dictionary)
-    print("ntokens entity : ", n_tokens)
     model = EntityCompositeRNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
                      args["dropoute"], args["wdrop"], args["tied"])
     criterion = nn.CrossEntropyLoss()

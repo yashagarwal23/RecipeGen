@@ -5,9 +5,9 @@ from data_utils import load_text_dataset, load_entity_composite_dataset
 from awd_lstm.build_model import get_model as get_rnn_model, train_and_eval as train_and_eval_rnn_model
 from entity_composite.build_model import get_model as get_entity_composite_model, train_and_eval as train_and_eval_entity_composite_model
 
-data_without_types = "./data_without_type/"
-data_with_type = "./data_with_type"
-data_entity_composite = "./data_entity_composite/"
+data_without_types = "recipe_data/data_without_type/"
+data_with_type = "recipe_data/data_with_type"
+data_entity_composite = "recipe_data/data_entity_composite/"
 
 args = {
             "model_type" : "LSTM",
@@ -32,6 +32,7 @@ args = {
             "alpha" : 2, "beta" : 1, "wdecay" : 1.2e-6,
             "optimizer" : "sgd",
         }
+args["cuda"] = False
 if __name__ == '__main__':
     np.random.seed(args["seed"])
     torch.manual_seed(args["seed"])

@@ -1,7 +1,6 @@
 __pycache__/
 corpus.*
-data_entity_composite/
-data_without_type/
-data_with_type/
+recipe_data/*
+!recipe_data/Readme.md
 *.pt
 test.py
