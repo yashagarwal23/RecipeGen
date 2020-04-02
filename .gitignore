@@ -1,6 +1,7 @@
 __pycache__/
 corpus.*
-recipe_data/*
-!recipe_data/Readme.md
+recipe_data*/
+!recipe_data*/Readme.md
+models*/
 *.pt
 test.py

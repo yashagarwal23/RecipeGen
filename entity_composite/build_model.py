@@ -61,13 +61,7 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
         optimizer.zero_grad()
 
         output, hidden, rnn_hs, dropped_rnn_hs = model(data, data2, hidden, return_h=True)
-        #  print("output : ", output.size())
-        #  for idx in output:
-        #      print
-        #  raw_loss
-        #  raw_loss = criterion(model.decoder.weight, model.decoder.bias, output, targets)
         raw_loss = criterion(output, targets)
-        #  print("raw loss : ", raw_loss.data)
         loss = raw_loss
         # Activiation Regularization
         if args["alpha"]: loss = loss + sum(args["alpha"]* dropped_rnn_h.pow(2).mean() for dropped_rnn_h in dropped_rnn_hs[-1:])
@@ -93,7 +87,7 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
         ###
         batch += 1
         i += seq_len
-
+        del data, data2, targets, targets2, raw_loss
 
 def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path):
     val_data = batchify(corpus.valid, args["eval_batch_size"], args)

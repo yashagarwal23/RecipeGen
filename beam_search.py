@@ -1,7 +1,7 @@
 import operator
 import os
 import re
-from main import args, data_without_types, data_with_type, data_entity_composite
+from main import args, data_without_types, data_with_type, data_entity_composite, model_awd_lstm_save_path, model_type_save_path, model_entity_composite_save_path
 from awd_lstm.build_model import get_model as get_rnn_model, model_load
 from entity_composite.build_model import get_model as get_entity_composite_model
 from data_utils import load_text_dataset, load_entity_composite_dataset
@@ -17,8 +17,8 @@ def word2idx(word, corpus):
 
 def get_type(word, index = False):
     if index:
-        if word in all_type_entities:
-            word_ori = idx2word(word, corpus_entity_composite)
+        word_ori = idx2word(word, corpus_entity_composite)
+        if word_ori in all_type_entities:
             word_type = entity_type[word_ori]
             return word2idx(word_type, corpus_type)
         else:
@@ -37,15 +37,15 @@ corpus_entity_composite = load_entity_composite_dataset(data_entity_composite)
 EOS_TOKEN = '<eos>'
 LogSoftmax = nn.LogSoftmax(dim=1)
 Softmax = nn.Softmax(dim=1)
-types = [file_name[:-4] for file_name in os.listdir("superingredients/")]
+types = [file_name[:-4] for file_name in os.listdir("types/")]
 type_indexes = list(map(lambda x : word2idx(x, corpus_type), types))
 
 regex = re.compile(".*?\((.*?)\)")
 all_type_entities = set()
 type_to_entites_dict = {}
 entity_type = {}
-for file_name in os.listdir("superingredients/"):
-    f = open("superingredients/" + file_name, "r")
+for file_name in os.listdir("types/"):
+    f = open("types/" + file_name, "r")
     entities = list(map(lambda x : re.sub("[\(\[].*?[\)\]]", "", x.lower()).strip(), f.readlines()))
     all_type_entities.update(entities)
     type_to_entites_dict[file_name[:-4]] = entities
@@ -106,7 +106,6 @@ def beam_search(model, corpus, hidden, initial_sentence):
     qsize = 1
     while True:
         if qsize > 2000: break
-
         score, n = nodes.get()
         new_word = n.wordid
         hidden = n.h
@@ -190,7 +189,7 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
 
     for idx, word in enumerate(corpus_ori.dictionary.idx2word):
         if word in all_type_entities:
-            p_type = output_type[idx].data
+            p_type = output_type[get_type(idx, True)].data
             type_of_word = entity_type[word]
             p_entity_composite = output_entity_composite[idx].data/type_prob_sum[type_of_word]
             prob = p_type * p_entity_composite
@@ -222,8 +221,10 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
     qsize = 1
     while True:
         if qsize > 2000: break
-
-        score, n = nodes.get()
+        try:
+            score, n = nodes.get()
+        except:
+            continue
         new_word = n.wordid
         hidden = n.h
         if new_word[0].data == word2idx(EOS_TOKEN, corpus_ori) and n.prevNode != None:
@@ -233,7 +234,6 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
             else:
                 continue
 
-        #  output, hidden = model(new_word.view(1, 1), hidden)
         output, hidden = get_next_word_entity_composite(model, corpus, new_word.view(-1), hidden)
         output = torch.log(output)
         log_prob, indexes = torch.topk(output, beam_width)
@@ -250,7 +250,10 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
 
         for i in range(len(next_nodes)):
             score, nn = next_nodes[i]
-            nodes.put((score, nn))
+            try:
+                nodes.put((score, nn))
+            except:
+                pass
         qsize += len(next_nodes) - 1
 
     if len(endnodes) == 0:
@@ -271,31 +274,35 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
 
 with torch.no_grad():
     #  model_awd_lstm, _, _ = get_rnn_model(corpus_awd_lstm, args)
-    #  model_awd_lstm_state_dict, _, _ = model_load("model_awd_lstm.pt", "cpu")
+    #  model_awd_lstm_state_dict, _, _ = model_load(model_awd_lstm_save_path, "cpu")
     #  model_awd_lstm.load_state_dict(model_awd_lstm_state_dict)
-
+    #
+    #  initial_sentence = "preheat the oven . mix flour and water in a bowl .".split(' ')
     #  hidden = model_awd_lstm.init_hidden(1)
     #  search = [idx2word(word.item(), corpus_awd_lstm) for word in beam_search(model_awd_lstm, corpus_awd_lstm, hidden, initial_sentence)[0]]
     #  print(search)
 
 
     model_type, _, _ = get_rnn_model(corpus_type, args)
-    model_type_state_dict, _, _ = model_load("model_type.pt", "cpu")
+    model_type_state_dict, _, _ = model_load(model_type_save_path, "cpu")
     model_type.load_state_dict(model_type_state_dict)
 
     model_entity_composite, _, _ = get_entity_composite_model(corpus_entity_composite, args)
-    model_entity_composite_state_dict, _, _ = model_load("model_entity_composite.pt", "cpu")
+    model_entity_composite_state_dict, _, _ = model_load(model_entity_composite_save_path, "cpu")
     model_entity_composite.load_state_dict(model_entity_composite_state_dict)
-
-
 
 
     model = (model_entity_composite, model_type)
     hidden = (model_entity_composite.init_hidden(1), model_type.init_hidden(1))
     corpus = (corpus_entity_composite, corpus_type)
 
+    #  print(get_type("the"))
 
-    initial_sentence = "preheat the oven .".split(' ')
+    print("corpus_ori : ", len(corpus_ori.dictionary))
+    print("corpus_type : ", len(corpus_type.dictionary))
+    print("corpus_entity_composite : ", len(corpus_entity_composite.dictionary))
+
+    initial_sentence = "preheat the oven . mix flour and water in a bowl .".split(' ')
     initial_sentence = [(word, get_type(word)) for word in initial_sentence]
     search = [idx2word(word.item(), corpus_awd_lstm) for word in beam_search_entity_composite(model, corpus, hidden, initial_sentence)[0]]
     print(search)

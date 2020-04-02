@@ -9,6 +9,10 @@ data_without_types = "recipe_data/data_without_type/"
 data_with_type = "recipe_data/data_with_type"
 data_entity_composite = "recipe_data/data_entity_composite/"
 
+model_awd_lstm_save_path = "models/model_awd_lstm.pt"
+model_type_save_path = "models/model_type.pt"
+model_entity_composite_save_path = "models/model_entity_composite.pt"
+
 args = {
             "model_type" : "LSTM",
             "embedding_size" : 400, # word embedding size
@@ -17,7 +21,7 @@ args = {
             "lr" : 2, # learning rate
             "clip" : 0.25, # gradient clipping
             "epochs" : 10,
-            "batch_size" : 80, "eval_batch_size" : 10, "test_batch_size" : 1,
+            "batch_size" : 64, "eval_batch_size" : 10, "test_batch_size" : 1,
             "bptt" : 70, # sequence length
             "dropout" : 0.4,
             "dropouth" : 0.3, # dropout for rnn layers
@@ -52,10 +56,10 @@ if __name__ == '__main__':
     else:
         optimizer_model_awd_lstm = torch.optim.Adam(params_model_awd_lstm, lr=args["lr"], weight_decay=args["wdecay"])
 
-    if not os.path.exists('model_awd_lstm.pt'):
+    if not os.path.exists(model_awd_lstm_save_path):
         train_and_eval_rnn_model(model_awd_lstm, corpus_awd_lstm, optimizer_model_awd_lstm,
                 criterion_awd_lstm, params_model_awd_lstm, args,
-                'model_awd_lstm.pt')
+                model_awd_lstm_save_path)
 
 
     # type model
@@ -66,10 +70,10 @@ if __name__ == '__main__':
     else:
         optimizer_model_type = torch.optim.Adam(params_model_type, lr = args["lr"], weight_decay=args["wdecay"])
 
-    if not os.path.exists("model_type.pt"):
+    if not os.path.exists(model_type_save_path):
         train_and_eval_rnn_model(model_type, corpus_type, optimizer_model_type,
                 criterion_type, params_model_type, args,
-                'model_type.pt')
+                model_type)
 
 
 
@@ -81,7 +85,7 @@ if __name__ == '__main__':
     else:
         optimizer_entity_composite = torch.optim.Adam(params_model_entity_composite, lr=args["lr"], weight_decay=args["wdecay"])
 
-    if not os.path.exists("model_entity_composite.pt"):
+    if not os.path.exists(model_entity_composite_save_path):
         train_and_eval_entity_composite_model(model_entity_composite, corpus_entity_composite, optimizer_entity_composite,
                 criterion_entity_composite, params_model_entity_composite, args,
-                'model_entity_composite.pt')
+                model_entity_composite_save_path)
