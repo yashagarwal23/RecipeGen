@@ -1,5 +1,5 @@
 __pycache__/
-corpus.*
+corpus/
 recipe_data*/
 !recipe_data*/Readme.md
 models*/

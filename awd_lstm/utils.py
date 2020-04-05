@@ -5,7 +5,7 @@ def model_save(fn, model, criterion, optimizer):
         torch.save([model.state_dict(), criterion, optimizer], f)
 
 
-def model_load(fn, device = 'gpu'):
+def model_load(fn, device = 'cuda:0'):
     with open(fn, 'rb') as f:
         model_state_dict, criterion, optimizer = torch.load(f, map_location=device)
         return model_state_dict, criterion, optimizer
