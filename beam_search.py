@@ -202,6 +202,8 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
 
 
 def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
+    if model.is_attention_model():
+        model.reset_last_layer()
     beam_width = 10
     topk = 1
     #  sentence = []

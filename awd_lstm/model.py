@@ -92,8 +92,6 @@ class RNNModel(nn.Module):
         output = self.lockdrop(raw_output, self.dropout)
         outputs.append(output)
 
-        #  print("output inside model : ", output.size())
-
         #  The below line was present in rizwan main.py to check baseline result from awd-lstm but was not present in the original awd-lstm
         decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))
         result = decoded.view(output.size(0)*output.size(1), -1)

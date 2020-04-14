@@ -60,6 +60,9 @@ class EntityCompositeRNNModel(nn.Module):
         self.dropoute = dropoute
         self.tie_weights = tie_weights
 
+    def is_attention_model(self):
+        return False
+
     def reset(self):
         if self.rnn_type == 'QRNN':
             [r.reset() for r in self.rnns]

@@ -5,12 +5,15 @@ import torch.nn as nn
 import torch.nn.utils
 import time
 from entity_composite.model import EntityCompositeRNNModel
+from entity_composite.attention_model import EntityCompositeAttentionRNNModel
 from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, model_load
 
-def get_model(corpus, args):
+def get_model(corpus, args, attention_model = False):
     n_tokens = len(corpus.dictionary)
-    model = EntityCompositeRNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
-                     args["dropoute"], args["wdrop"], args["tied"])
+    if attention_model :
+        model = EntityCompositeAttentionRNNModel(n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args['tied'])
+    else:
+        model = EntityCompositeRNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args["tied"])
     criterion = nn.CrossEntropyLoss()
     if args["cuda"]:
         model = model.cuda()
@@ -25,6 +28,8 @@ def evaluate(model, criterion, args, data_source, data_source2, batch_size=10):
         model.reset()
     total_loss = 0
     hidden = model.init_hidden(batch_size)
+    if model.is_attention_model():
+        model.reset_last_layer()
     for i in range(0, data_source.size(0) - 1, args["bptt"]):
         data, targets = get_batch(data_source, i, args, evaluation=True)
         data2, targets2 = get_batch(data_source2, i, args, evaluation=True)
@@ -44,6 +49,8 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
     hidden = model.init_hidden(args["batch_size"])
     batch, i = 0, 0
     while i < train_data.size(0) - 1 - 1:
+        if model.is_attention_model():
+            model.reset_last_layer()
         bptt = args["bptt"] if np.random.random() < 0.95 else args["bptt"]/ 2.
         # Prevent excessively small or negative sequence lengths
         seq_len = max(5, int(np.random.normal(bptt, 5)))
@@ -61,6 +68,7 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
         optimizer.zero_grad()
 
         output, hidden, rnn_hs, dropped_rnn_hs = model(data, data2, hidden, return_h=True)
+        #  output, hidden = model(data, data2, hidden, return_h=False)
         raw_loss = criterion(output, targets)
         loss = raw_loss
         # Activiation Regularization

@@ -21,7 +21,7 @@ args = {
             "lr" : 2, # learning rate
             "clip" : 0.25, # gradient clipping
             "epochs" : 10,
-            "batch_size" : 64, "eval_batch_size" : 10, "test_batch_size" : 1,
+            "batch_size" : 32, "eval_batch_size" : 10, "test_batch_size" : 1,
             "bptt" : 70, # sequence length
             "dropout" : 0.4,
             "dropouth" : 0.3, # dropout for rnn layers
@@ -36,7 +36,7 @@ args = {
             "alpha" : 2, "beta" : 1, "wdecay" : 1.2e-6,
             "optimizer" : "sgd",
         }
-args["cuda"] = False
+
 if __name__ == '__main__':
     np.random.seed(args["seed"])
     torch.manual_seed(args["seed"])
@@ -73,13 +73,13 @@ if __name__ == '__main__':
     if not os.path.exists(model_type_save_path):
         train_and_eval_rnn_model(model_type, corpus_type, optimizer_model_type,
                 criterion_type, params_model_type, args,
-                model_type)
+                model_type_save_path)
 
 
 
     # entity composite model
     corpus_entity_composite = load_entity_composite_dataset(data_entity_composite)
-    model_entity_composite, criterion_entity_composite, params_model_entity_composite = get_entity_composite_model(corpus_entity_composite, args)
+    model_entity_composite, criterion_entity_composite, params_model_entity_composite = get_entity_composite_model(corpus_entity_composite, args, attention_model=True)
     if args["optimizer"] == "sgd":
         optimizer_entity_composite = torch.optim.SGD(params_model_entity_composite, lr=args["lr"], weight_decay=args["wdecay"])
     else:

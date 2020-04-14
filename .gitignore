@@ -5,3 +5,4 @@ recipe_data*/
 models*/
 *.pt
 test.py
+*.zip
