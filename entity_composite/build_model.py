@@ -28,9 +28,9 @@ def evaluate(model, criterion, args, data_source, data_source2, batch_size=10):
         model.reset()
     total_loss = 0
     hidden = model.init_hidden(batch_size)
-    if model.is_attention_model():
-        model.reset_last_layer()
     for i in range(0, data_source.size(0) - 1, args["bptt"]):
+        if model.is_attention_model():
+            model.reset_last_layer()
         data, targets = get_batch(data_source, i, args, evaluation=True)
         data2, targets2 = get_batch(data_source2, i, args, evaluation=True)
         output, hidden = model(data, data2, hidden)
