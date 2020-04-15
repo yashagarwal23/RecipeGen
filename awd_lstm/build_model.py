@@ -5,11 +5,16 @@ import torch.nn as nn
 import torch.nn.utils
 import time
 from awd_lstm.model import RNNModel
+from awd_lstm.attention_model import RNNAttentionModel
 from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, model_load
 
-def get_model(corpus, args):
+def get_model(corpus, args, attention_model = False):
     n_tokens = len(corpus.dictionary)
-    model = RNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
+    if attention_model:
+        model = RNNAttentionModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
+                     args["dropoute"], args["wdrop"], args["tied"], is_cuda = args["cuda"])
+    else:
+        model = RNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
                      args["dropoute"], args["wdrop"], args["tied"])
     criterion = nn.CrossEntropyLoss()
     if args["cuda"]:
@@ -26,6 +31,8 @@ def evaluate(model, criterion, args, data_source, batch_size=10):
     total_loss = 0
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args["bptt"]):
+        if model.is_attention_model():
+            model.reset_last_layer()
         data, targets = get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
         #  total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
@@ -42,6 +49,8 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
     hidden = model.init_hidden(args["batch_size"])
     batch, i = 0, 0
     while i < train_data.size(0) - 1 - 1:
+        if model.is_attention_model():
+            model.reset_last_layer()
         bptt = args["bptt"] if np.random.random() < 0.95 else args["bptt"]/ 2.
         # Prevent excessively small or negative sequence lengths
         seq_len = max(5, int(np.random.normal(bptt, 5)))

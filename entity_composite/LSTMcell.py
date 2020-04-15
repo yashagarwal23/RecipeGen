@@ -5,7 +5,7 @@ from torch.nn import Parameter
 from entity_composite.decoder_functions import attention_combined as decoder_function
 
 class LSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, bias=True, attention=False):
+    def __init__(self, input_size, hidden_size, bias=True, attention=False, is_cuda = False):
         super(LSTM, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -16,7 +16,7 @@ class LSTM(nn.Module):
             self.ws = Parameter(torch.randn(hidden_size, hidden_size))
             self.vs = Parameter(torch.randn(hidden_size, 1))
         self.previous_hidden = None
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda:0" if is_cuda else "cpu"
 
     def detach_attention_params(self):
         self.ws.detach_()

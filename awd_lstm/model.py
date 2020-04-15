@@ -56,6 +56,10 @@ class RNNModel(nn.Module):
         self.dropouth = dropouth
         self.dropoute = dropoute
         self.tie_weights = tie_weights
+        self.attetion = False
+
+    def is_attention_model(self):
+        return self.attetion
 
     def reset(self):
         if self.rnn_type == 'QRNN': [r.reset() for r in self.rnns]

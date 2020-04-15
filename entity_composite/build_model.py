@@ -11,7 +11,7 @@ from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, mo
 def get_model(corpus, args, attention_model = False):
     n_tokens = len(corpus.dictionary)
     if attention_model :
-        model = EntityCompositeAttentionRNNModel(n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args['tied'])
+        model = EntityCompositeAttentionRNNModel(n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args['tied'], args['cuda'])
     else:
         model = EntityCompositeRNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args["tied"])
     criterion = nn.CrossEntropyLoss()
