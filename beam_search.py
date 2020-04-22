@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 from queue import PriorityQueue
 
+args["cuda"] = False
+
 def idx2word(idx, corpus):
     return corpus.dictionary.idx2word[idx]
 
@@ -18,7 +20,7 @@ def get_type(word, index = False):
         word_ori = idx2word(word, corpus_entity_composite)
         if word_ori in all_type_entities:
             word_type = entity_type[word_ori]
-            return word2idx(word_type, corpus_type)
+            return word2idx(word_type, corpus_entity_composite)
         else:
             return word
     else:
@@ -27,7 +29,7 @@ def get_type(word, index = False):
         else:
             return word
 
-entity_type_folder = "types/"
+entity_type_folder = "recipe_data_clean/types/"
 
 corpus_ori = load_text_dataset(data_without_types)
 corpus_awd_lstm = load_text_dataset(data_without_types)
@@ -47,7 +49,7 @@ type_to_entites_dict = {}
 entity_type = {}
 for file_name in os.listdir(entity_type_folder):
     f = open(entity_type_folder + file_name, "r")
-    entities = list(map(lambda x : re.sub("[\(\[].*?[\)\]]", "", x.lower()).strip(), f.readlines()))
+    entities = list(map(lambda x : x.lower().strip(), f.readlines()))
     all_type_entities.update(entities)
     type_to_entites_dict[file_name[:-4]] = entities
     for entity in entities:
@@ -70,6 +72,12 @@ class BeamSearchNode(object):
         self.logp = logProb
         self.leng = length
 
+    def __lt__(self, other):
+        return self.eval() < other.eval()
+
+    def __le__(self, other):
+        return self.eval() <= other.eval()
+
     def eval(self, alpha=1.0):
         reward = 0
         return self.logp / float(self.leng - 1 + 1e-6) + alpha * reward
@@ -84,27 +92,35 @@ def get_next_word(model, corpus, word, hidden, isIndex = True):
 
 
 def beam_search(model, corpus, hidden, initial_sentence):
+    if model.is_attention_model():
+        model.reset_last_layer()
     beam_width = 10
     topk = 1
-    sentence = []
     for word in initial_sentence:
-        try:
-            output, hidden = get_next_word(model, corpus, word, hidden, False)
-            next_word = torch.argmax(output).data
-        except:
-            continue
-        sentence.append(idx2word(next_word, corpus))
-
-    start_word = torch.LongTensor([next_word], device = "gpu" if args["cuda"] else "cpu")
+        output, hidden = get_next_word(model, corpus, word, hidden, False)
 
     endnodes = []
     number_required = min((topk + 1), topk - len(endnodes))
-
-    node = BeamSearchNode(hidden, None, start_word, 0, 1)
     nodes = PriorityQueue()
+    qsize = 0
 
-    nodes.put((-node.eval(), node))
-    qsize = 1
+    output = torch.log(output)
+    log_prob, indexes = torch.topk(output, beam_width)
+    next_nodes = []
+
+    for new_k in range(beam_width):
+        decoded_t = indexes[0][new_k].view(1, -1)
+        log_p = log_prob[0][new_k].item()
+
+        node = BeamSearchNode(hidden, None, decoded_t, 0, 1)
+        score = -node.eval()
+        next_nodes.append((score, node))
+
+    for i in range(len(next_nodes)):
+        score, nn = next_nodes[i]
+        nodes.put((score, nn))
+    qsize += len(next_nodes) - 1
+
     while True:
         if qsize > 2000: break
         score, n = nodes.get()
@@ -119,7 +135,6 @@ def beam_search(model, corpus, hidden, initial_sentence):
             else:
                 continue
 
-        #  output, hidden = model(new_word.view(1, 1), hidden)
         output, hidden = get_next_word(model, corpus, new_word.view(1, 1), hidden)
         output = torch.log(output)
         log_prob, indexes = torch.topk(output, beam_width)
@@ -167,7 +182,7 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
     # entity_composite prediction
     if not isIndex:
         word = word2idx(word, corpus_entity_composite)
-        word_type = word2idx(word_type, corpus_type)
+        word_type = word2idx(word_type, corpus_entity_composite)
     #  model_entity_composite.eval()
     output_entity_composite, new_hidden_entity_composite = model_entity_composite(torch.LongTensor([word]).view(1, -1), torch.LongTensor([word_type]).view(1, -1), hidden_entity_composite)
     output_entity_composite = Softmax(output_entity_composite).view(-1)
@@ -177,11 +192,8 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
     for t in types:
         p = 0.0
         for entity in type_to_entites_dict[t]:
-            try:
-                idx = word2idx(entity, corpus_ori)
-                p += output_entity_composite[idx].data
-            except:
-                pass
+            idx = word2idx(entity, corpus_ori)
+            p += output_entity_composite[idx].data
         type_prob_sum[t] = p
     other_prob_sum = 1.0 - sum([prob_sum for _,prob_sum in type_prob_sum.items()])
 
@@ -202,32 +214,42 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
 
 
 def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
-    if model.is_attention_model():
-        model.reset_last_layer()
-    beam_width = 10
+    if model[0].is_attention_model():
+        model[0].reset_last_layer()
+    if model[1].is_attention_model():
+        model[1].reset_last_layer()
+
+    beam_width = 15
     topk = 1
-    #  sentence = []
     for word in initial_sentence:
         output, hidden = get_next_word_entity_composite(model, corpus, word, hidden, False)
-        next_word_idx = torch.argmax(output).data
-        next_word_type_idx = get_type(next_word_idx, True)
-
-    start_word = torch.LongTensor([next_word_idx, next_word_type_idx], device = device)
 
     endnodes = []
     number_required = min((topk + 1), topk - len(endnodes))
-
-    node = BeamSearchNode(hidden, None, start_word, 0, 1)
     nodes = PriorityQueue()
+    qsize = 0
 
-    nodes.put((-node.eval(), node))
-    qsize = 1
+    output = torch.log(output)
+    log_prob, indexes = torch.topk(output, beam_width)
+    next_nodes = []
+
+    for new_k in range(beam_width):
+        decoded_t = indexes[0][new_k].view(1, -1)
+        decoded_type_idx = get_type(decoded_t, True)
+        log_p = log_prob[0][new_k].item()
+
+        node = BeamSearchNode(hidden, None, torch.LongTensor([decoded_t, decoded_type_idx], device = device), 0, 1)
+        score = -node.eval()
+        next_nodes.append((score, node))
+
+    for i in range(len(next_nodes)):
+        score, nn = next_nodes[i]
+        nodes.put((score, nn))
+    qsize += len(next_nodes) - 1
+
     while True:
-        if qsize > 2000: break
-        try:
-            score, n = nodes.get()
-        except:
-            continue
+        if qsize > 20000: break
+        score, n = nodes.get()
         new_word = n.wordid
         hidden = n.h
         if new_word[0].data == word2idx(EOS_TOKEN, corpus_ori) and n.prevNode != None:
@@ -253,10 +275,7 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
 
         for i in range(len(next_nodes)):
             score, nn = next_nodes[i]
-            try:
-                nodes.put((score, nn))
-            except:
-                pass
+            nodes.put((score, nn))
         qsize += len(next_nodes) - 1
 
     if len(endnodes) == 0:

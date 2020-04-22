@@ -19,8 +19,8 @@ class LSTM(nn.Module):
         self.device = "cuda:0" if is_cuda else "cpu"
 
     def detach_attention_params(self):
-        self.ws.detach_()
-        self.vs.detach_()
+        self.ws.detach_().requires_grad = True
+        self.vs.detach_().requires_grad = True
 
     def __str__(self):
         return 'LSTM ({}, {} attention:{})'.format(self.input_size, self.hidden_size, self.attention)
