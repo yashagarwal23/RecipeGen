@@ -15,12 +15,12 @@ def idx2word(idx, corpus):
 def word2idx(word, corpus):
     return corpus.dictionary.word2idx[word]
 
-def get_type(word, index = False):
+def get_type(word, corpus, index = False):
     if index:
         word_ori = idx2word(word, corpus_entity_composite)
         if word_ori in all_type_entities:
             word_type = entity_type[word_ori]
-            return word2idx(word_type, corpus_entity_composite)
+            return word2idx(word_type, corpus)
         else:
             return word
     else:
@@ -29,12 +29,13 @@ def get_type(word, index = False):
         else:
             return word
 
-entity_type_folder = "recipe_data_clean/types/"
+entity_type_folder = "all_data/recipe_data_new/types/"
 
 corpus_ori = load_text_dataset(data_without_types)
 corpus_awd_lstm = load_text_dataset(data_without_types)
 corpus_type = load_text_dataset(data_with_type)
 corpus_entity_composite = load_entity_composite_dataset(data_entity_composite)
+
 
 EOS_TOKEN = '<eos>'
 LogSoftmax = nn.LogSoftmax(dim=1)
@@ -94,7 +95,7 @@ def get_next_word(model, corpus, word, hidden, isIndex = True):
 def beam_search(model, corpus, hidden, initial_sentence):
     if model.is_attention_model():
         model.reset_last_layer()
-    beam_width = 10
+    beam_width = 15
     topk = 1
     for word in initial_sentence:
         output, hidden = get_next_word(model, corpus, word, hidden, False)
@@ -122,7 +123,7 @@ def beam_search(model, corpus, hidden, initial_sentence):
     qsize += len(next_nodes) - 1
 
     while True:
-        if qsize > 2000: break
+        if qsize > 10000: break
         score, n = nodes.get()
         new_word = n.wordid
         hidden = n.h
@@ -174,7 +175,6 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
     corpus_entity_composite, corpus_type = corpus
     word, word_type = word_with_type
     hidden_entity_composite, hidden_type = hidden
-
     #type model prediction
     output_type, new_hidden_type = get_next_word(model_type, corpus_type, word_type, hidden_type, isIndex)
     output_type = output_type.view(-1)
@@ -183,6 +183,7 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
     if not isIndex:
         word = word2idx(word, corpus_entity_composite)
         word_type = word2idx(word_type, corpus_entity_composite)
+
     #  model_entity_composite.eval()
     output_entity_composite, new_hidden_entity_composite = model_entity_composite(torch.LongTensor([word]).view(1, -1), torch.LongTensor([word_type]).view(1, -1), hidden_entity_composite)
     output_entity_composite = Softmax(output_entity_composite).view(-1)
@@ -192,7 +193,7 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
     for t in types:
         p = 0.0
         for entity in type_to_entites_dict[t]:
-            idx = word2idx(entity, corpus_ori)
+            idx = word2idx(entity, corpus_entity_composite)
             p += output_entity_composite[idx].data
         type_prob_sum[t] = p
     other_prob_sum = 1.0 - sum([prob_sum for _,prob_sum in type_prob_sum.items()])
@@ -200,17 +201,28 @@ def get_next_word_entity_composite(model, corpus, word_with_type, hidden, isInde
     probs = []
     all_type_prob = sum([output_type[type_idx].data for type_idx in type_indexes])
 
-    for idx, word in enumerate(corpus_ori.dictionary.idx2word):
-        if word in all_type_entities:
-            p_type = output_type[get_type(idx, True)].data
-            type_of_word = entity_type[word]
-            p_entity_composite = output_entity_composite[idx].data/type_prob_sum[type_of_word]
-            prob = p_type * p_entity_composite
-        else:
-            p_entity_composite = output_entity_composite[idx].data/other_prob_sum
-            prob = (1 - all_type_prob)*p_entity_composite
-        probs.append(prob)
-    return Softmax(torch.Tensor(probs).view(1, -1)), (new_hidden_entity_composite, new_hidden_type)
+    #  probs = torch.zeros(len(corpus_ori.dictionary))
+    #  probs = (1-all_type_prob)/other_prob_sum*output_entity_composite[:len(corpus_ori.dictionary)]
+    probs = (1-all_type_prob)*output_entity_composite[:len(corpus_ori.dictionary)]
+
+    for word in all_type_entities:
+        idx = word2idx(word, corpus_ori)
+        p_type = output_type[get_type(idx, corpus_type, True)].data
+        type_of_word = entity_type[word]
+        p_entity_composite = output_entity_composite[idx].data/type_prob_sum[type_of_word]
+        probs[idx] = p_type * p_entity_composite
+
+    #  for idx, word in enumerate(corpus_ori.dictionary.idx2word):
+    #      if word in all_type_entities:
+    #          p_type = output_type[get_type(idx, corpus_type, True)].data
+    #          type_of_word = entity_type[word]
+    #          p_entity_composite = output_entity_composite[idx].data/type_prob_sum[type_of_word]
+    #          prob = p_type * p_entity_composite
+    #      else:
+    #          p_entity_composite = output_entity_composite[idx].data
+    #          prob = (1 - all_type_prob)*p_entity_composite
+    #      probs.append(prob)
+    return torch.Tensor(probs).view(1, -1), (new_hidden_entity_composite, new_hidden_type)
 
 
 def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
@@ -219,8 +231,8 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
     if model[1].is_attention_model():
         model[1].reset_last_layer()
 
-    beam_width = 15
-    topk = 1
+    beam_width = 10
+    topk = 8
     for word in initial_sentence:
         output, hidden = get_next_word_entity_composite(model, corpus, word, hidden, False)
 
@@ -229,14 +241,23 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
     nodes = PriorityQueue()
     qsize = 0
 
-    output = torch.log(output)
-    log_prob, indexes = torch.topk(output, beam_width)
+    output = output.squeeze()
+
+    #  output = torch.log(output)
+    #  log_prob, indexes = torch.topk(output, beam_width)
+    #  p = output/sum(output)
+    #  print(sum(p))
+    indexes = torch.multinomial(output, beam_width)
+    #  print(indexes)
+    #  print(output.data[indexes.tolist()])
+    log_prob = torch.log(output.data[indexes.tolist()])
+    #  print(log_prob)
     next_nodes = []
 
     for new_k in range(beam_width):
-        decoded_t = indexes[0][new_k].view(1, -1)
-        decoded_type_idx = get_type(decoded_t, True)
-        log_p = log_prob[0][new_k].item()
+        decoded_t = indexes[new_k].view(1, -1)
+        decoded_type_idx = get_type(decoded_t, corpus_entity_composite, True)
+        log_p = log_prob[new_k].item()
 
         node = BeamSearchNode(hidden, None, torch.LongTensor([decoded_t, decoded_type_idx], device = device), 0, 1)
         score = -node.eval()
@@ -248,7 +269,7 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
     qsize += len(next_nodes) - 1
 
     while True:
-        if qsize > 20000: break
+        if qsize > 10000: break
         score, n = nodes.get()
         new_word = n.wordid
         hidden = n.h
@@ -260,14 +281,18 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
                 continue
 
         output, hidden = get_next_word_entity_composite(model, corpus, new_word.view(-1), hidden)
-        output = torch.log(output)
-        log_prob, indexes = torch.topk(output, beam_width)
+        output = output.squeeze()
+        #  output = torch.log(output)
+        #  log_prob, indexes = torch.topk(output, beam_width)
+        #  p = output/sum(output)
+        indexes = torch.multinomial(output, beam_width)
+        log_prob = torch.log(output.data[indexes.tolist()])
         next_nodes = []
 
         for new_k in range(beam_width):
-            decoded_t = indexes[0][new_k].view(1, -1)
-            decoded_type_idx = get_type(decoded_t, True)
-            log_p = log_prob[0][new_k].item()
+            decoded_t = indexes[new_k].view(1, -1)
+            decoded_type_idx = get_type(decoded_t, corpus_entity_composite, True)
+            log_p = log_prob[new_k].item()
 
             node = BeamSearchNode(hidden, n, torch.LongTensor([decoded_t, decoded_type_idx], device = device), n.logp + log_p, n.leng + 1)
             score = -node.eval()
