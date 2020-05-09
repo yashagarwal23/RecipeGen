@@ -318,3 +318,100 @@ def beam_search_entity_composite(model, corpus, hidden, initial_sentence):
         utterances.append(utterance)
 
     return utterances
+
+
+def get_next_word_combined(model, corpus, word, hidden, isIndex = True):
+    corpus_entity_composite, corpus_type = corpus
+    if isIndex:
+        word_type = get_type(idx2word(word, corpus_entity_composite), corpus_type, False)
+        word_idx = word
+        word_type_idx = word2idx(word_type, corpus_type)
+    else:
+        word_type = get_type(word, corpus_type, False)
+        word_idx = word2idx(word, corpus_entity_composite)
+        word_type_idx = word2idx(word_type, corpus_type)
+
+    output, hidden = model(torch.LongTensor([word_idx]).view(1, -1), torch.LongTensor([word_type_idx]).view(1, -1), hidden)
+    output = Softmax(output)
+    return output, hidden
+
+def beam_search_combined(model, corpus, hidden, initial_sentence):
+    if model.is_attention_model():
+        model.reset_last_layer()
+    beam_width = 15
+    topk = 5
+    output = torch.rand(1, 54769)
+    for word in initial_sentence:
+        output, hidden = get_next_word_combined(model, corpus, word, hidden, False)
+
+    endnodes = []
+    number_required = min((topk + 1), topk - len(endnodes))
+    nodes = PriorityQueue()
+    qsize = 0
+
+    output = output.squeeze()
+    output = torch.log(output)
+    log_prob, indexes = torch.topk(output, beam_width)
+    next_nodes = []
+
+    for new_k in range(beam_width):
+        decoded_t = indexes[new_k].view(1, -1)
+        log_p = log_prob[new_k].item()
+
+        node = BeamSearchNode(hidden, None, decoded_t, 0, 1)
+        score = -node.eval()
+        next_nodes.append((score, node))
+
+    for i in range(len(next_nodes)):
+        score, nn = next_nodes[i]
+        nodes.put((score, nn))
+    qsize += len(next_nodes) - 1
+
+    while True:
+        if qsize > 20000: break
+        score, n = nodes.get()
+        new_word = n.wordid
+        hidden = n.h
+
+        if new_word == word2idx(EOS_TOKEN, corpus[0]) and n.prevNode != None:
+            endnodes.append((score, n))
+
+            if len(endnodes) >= number_required:
+                break
+            else:
+                continue
+
+        output, hidden = get_next_word_combined(model, corpus, new_word.view(1, 1), hidden)
+        output = output.squeeze()
+        output = torch.log(output)
+        log_prob, indexes = torch.topk(output, beam_width)
+        next_nodes = []
+
+        for new_k in range(beam_width):
+            decoded_t = indexes[new_k].view(1, -1)
+            log_p = log_prob[new_k].item()
+
+            node = BeamSearchNode(hidden, n, decoded_t, n.logp + log_p, n.leng + 1)
+            score = -node.eval()
+            next_nodes.append((score, node))
+
+        for i in range(len(next_nodes)):
+            score, nn = next_nodes[i]
+            nodes.put((score, nn))
+        qsize += len(next_nodes) - 1
+
+    if len(endnodes) == 0:
+        endnodes = [nodes.get() for _ in range(topk)]
+
+    utterances = []
+    for score, n in sorted(endnodes, key=operator.itemgetter(0)):
+        utterance = []
+        utterance.append(n.wordid)
+        while n.prevNode != None:
+            n = n.prevNode
+            utterance.append(n.wordid)
+
+        utterance = utterance[::-1]
+        utterances.append(utterance)
+
+    return utterances

@@ -6,8 +6,15 @@ import torch.nn.utils
 import time
 from combined_model.model import combined_model
 from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, model_load
+from awd_lstm.build_model import get_model as get_rnn_model
+from entity_composite.build_model import get_model as get_entity_composite_model
 
 def get_model(model_entity_composite, model_type, corpus, args, attention_model = False):
+    if model_entity_composite == None:
+        model_entity_composite, _, _ = get_entity_composite_model(corpus[0], args, attention_model)
+    if model_type == None:
+        model_type, _, _ = get_rnn_model(corpus[1], args, attention_model)
+
     model = combined_model(model_entity_composite, model_type)
     criterion = nn.CrossEntropyLoss()
     if args["cuda"]:
