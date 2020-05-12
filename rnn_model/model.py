@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 
-from awd_lstm.embed_regularize import embedded_dropout
-from awd_lstm.locked_dropout import LockedDropout
-from awd_lstm.weight_drop import WeightDrop
+from rnn_model.embed_regularize import embedded_dropout
+from rnn_model.locked_dropout import LockedDropout
+from rnn_model.weight_drop import WeightDrop
 
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
@@ -23,13 +23,13 @@ class RNNModel(nn.Module):
             #      self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
         if rnn_type == 'GRU':
             self.rnns = [torch.nn.GRU(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else ninp, 1, dropout=0) for l in range(nlayers)]
-            if wdrop:
-                self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
+            # if wdrop:
+            #     self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
         elif rnn_type == 'QRNN':
             from torchqrnn import QRNNLayer
             self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
-            for rnn in self.rnns:
-                rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
+            # for rnn in self.rnns:
+            #     rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
         print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
@@ -70,10 +70,9 @@ class RNNModel(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, hidden, return_h=False):
+    def forward(self, input, hidden, return_h=False, emb_out=False):
         emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
         #emb = self.idrop(emb)
-
         emb = self.lockdrop(emb, self.dropouti)
 
         raw_output = emb
@@ -82,7 +81,7 @@ class RNNModel(nn.Module):
         raw_outputs = []
         outputs = []
         for l, rnn in enumerate(self.rnns):
-            current_input = raw_output
+            # current_input = raw_output
             raw_output, new_h = rnn(raw_output, hidden[l])
             new_hidden.append(new_h)
             raw_outputs.append(raw_output)
@@ -92,14 +91,15 @@ class RNNModel(nn.Module):
                 outputs.append(raw_output)
         hidden = new_hidden
 
-
         output = self.lockdrop(raw_output, self.dropout)
         outputs.append(output)
 
-        #  The below line was present in rizwan main.py to check baseline result from awd-lstm but was not present in the original awd-lstm
-        decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))
-        result = decoded.view(output.size(0)*output.size(1), -1)
-        #  result = output.view(output.size(0)*output.size(1), output.size(2))
+        if not emb_out:
+            decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))
+            result = decoded.view(output.size(0)*output.size(1), -1)
+        else:
+            result = output
+
         if return_h:
             return result, hidden, raw_outputs, outputs
         return result, hidden

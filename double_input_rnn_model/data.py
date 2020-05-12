@@ -1,8 +1,6 @@
 import os
 import torch
-
 from collections import Counter
-
 
 class Dictionary(object):
     def __init__(self):
@@ -25,11 +23,22 @@ class Dictionary(object):
 
 
 class Corpus(object):
-    def __init__(self, path):
-        self.dictionary = Dictionary()
-        self.train = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test = self.tokenize(os.path.join(path, 'test.txt'))
+    def __init__(self, path, input_folder, input2_folder, target_folder, dictionary = None):
+        if dictionary == None:
+            self.dictionary = Dictionary()
+        else:
+            self.dictionary = dictionary
+        self.train = self.tokenize(os.path.join(path, input_folder, 'train.txt'))
+        self.valid = self.tokenize(os.path.join(path, input_folder, 'valid.txt'))
+        self.test = self.tokenize(os.path.join(path, input_folder, 'test.txt'))
+
+        self.train2 = self.tokenize(os.path.join(path, input2_folder, 'train.txt'))
+        self.valid2 = self.tokenize(os.path.join(path, input2_folder, 'valid.txt'))
+        self.test2 = self.tokenize(os.path.join(path, input2_folder, 'test.txt'))
+
+        self.target_train = self.tokenize(os.path.join(path, target_folder, 'train.txt'))
+        self.target_valid = self.tokenize(os.path.join(path, target_folder, 'valid.txt'))
+        self.target_test = self.tokenize(os.path.join(path, target_folder, 'test.txt'))
 
     def tokenize(self, path):
         """Tokenizes a text file."""
@@ -52,5 +61,4 @@ class Corpus(object):
                 for word in words:
                     ids[token] = self.dictionary.word2idx[word]
                     token += 1
-
         return ids

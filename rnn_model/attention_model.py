@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 
-from awd_lstm.embed_regularize import embedded_dropout
-from awd_lstm.locked_dropout import LockedDropout
+from rnn_model.embed_regularize import embedded_dropout
+from rnn_model.locked_dropout import LockedDropout
 #  from awd_lstm.weight_drop import WeightDrop
-from entity_composite.LSTMcell import LSTM
+from rnn_model.LSTMcell import LSTM
 
 class RNNAttentionModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""

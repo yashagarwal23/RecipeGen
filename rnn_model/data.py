@@ -25,16 +25,18 @@ class Dictionary(object):
 
 
 class Corpus(object):
-    def __init__(self, path):
-        self.dictionary = Dictionary()
-
-        self.train = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test = self.tokenize(os.path.join(path, 'test.txt'))
-        #the foloowing is just to capture all the words in the vocab
-        self.train_type = self.tokenize(os.path.join(path, 'train_type.txt'))
-        self.valid_type = self.tokenize(os.path.join(path, 'valid_type.txt'))
-        self.test_type = self.tokenize(os.path.join(path, 'test_type.txt'))
+    def __init__(self, path, input_folder, target_folder, dictionary = None):
+        if dictionary == None:
+            self.dictionary = Dictionary()
+        else:
+            self.dictionary = dictionary
+        self.train_input = self.tokenize(os.path.join(path, input_folder, 'train.txt'))
+        self.valid_input = self.tokenize(os.path.join(path, input_folder, 'valid.txt'))
+        self.test_input = self.tokenize(os.path.join(path, input_folder, 'test.txt'))
+        
+        self.train_target = self.tokenize(os.path.join(path, target_folder, 'train.txt'))
+        self.valid_target = self.tokenize(os.path.join(path, target_folder, 'valid.txt'))
+        self.test_target = self.tokenize(os.path.join(path, target_folder, 'test.txt'))
 
     def tokenize(self, path):
         """Tokenizes a text file."""
@@ -57,5 +59,4 @@ class Corpus(object):
                 for word in words:
                     ids[token] = self.dictionary.word2idx[word]
                     token += 1
-
         return ids

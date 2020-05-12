@@ -2,37 +2,36 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from awd_lstm.embed_regularize import embedded_dropout
-from awd_lstm.locked_dropout import LockedDropout
-from awd_lstm.weight_drop import WeightDrop
+from rnn_model.embed_regularize import embedded_dropout
+from rnn_model.locked_dropout import LockedDropout
+from rnn_model.weight_drop import WeightDrop
 
 
-class EntityCompositeRNNModel(nn.Module):
+class RNNModelDoubleInput(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
 
     def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5, dropouth=0.5, dropouti=0.5, dropoute=0.1, wdrop=0, tie_weights=False):
-        super(EntityCompositeRNNModel, self).__init__()
+        super(RNNModelDoubleInput, self).__init__()
         self.lockdrop = LockedDropout()
         self.idrop = nn.Dropout(dropouti)
         self.hdrop = nn.Dropout(dropouth)
         self.drop = nn.Dropout(dropout)
         self.encoder = nn.Embedding(ntoken, ninp)
-        # assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
-        assert rnn_type in ['LSTM'], 'RNN type is not supported'
+        assert rnn_type in ['LSTM', 'QRNN', 'GRU'], 'RNN type is not supported'
         if rnn_type == 'LSTM':
             self.rnns = [torch.nn.LSTM(2*ninp if l == 0 else nhid, nhid if l != nlayers - 1 else (
                 ninp if tie_weights else nhid), 1, dropout=0) for l in range(nlayers)]
             #  if wdrop:
             #  self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
         if rnn_type == 'GRU':
-           self.rnns = [torch.nn.GRU(ninp if l == 0 else nhid, nhid if l != nlayers - 1 else ninp, 1, dropout=0) for l in range(nlayers)]
-           if wdrop:
-               self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
+           self.rnns = [torch.nn.GRU(2*ninp if l == 0 else nhid, nhid if l != nlayers - 1 else ninp, 1, dropout=0) for l in range(nlayers)]
+        #    if wdrop:
+        #        self.rnns = [WeightDrop(rnn, ['weight_hh_l0'], dropout=wdrop) for rnn in self.rnns]
         elif rnn_type == 'QRNN':
            from torchqrnn import QRNNLayer
-           self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
-           for rnn in self.rnns:
-               rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
+           self.rnns = [QRNNLayer(input_size=2*ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
+        #    for rnn in self.rnns:
+        #        rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
         print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
@@ -73,11 +72,14 @@ class EntityCompositeRNNModel(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, input2, hidden, return_h=False):
+    def forward(self, input, input2, hidden, return_h=False, emb_inp=False, emb_out=False):
         emb = embedded_dropout(self.encoder, input,
                                dropout=self.dropoute if self.training else 0)
-        emb2 = embedded_dropout(self.encoder, input2,
-                                dropout=self.dropoute if self.training else 0)
+        if emb_inp:
+            emb2 = input2
+        else:
+            emb2 = embedded_dropout(self.encoder, input2,
+                                    dropout=self.dropoute if self.training else 0)
         #emb = self.idrop(emb)
 
         emb = self.lockdrop(emb, self.dropouti)
@@ -104,18 +106,19 @@ class EntityCompositeRNNModel(nn.Module):
         output = self.lockdrop(raw_output, self.dropout)
         outputs.append(output)
 
-        decoded = self.decoder(output.view(
-            output.size(0)*output.size(1), output.size(2)))
-        result = decoded.view(output.size(0)*output.size(1), -1)
+        if not emb_out:
+            decoded = self.decoder(output.view(
+                output.size(0)*output.size(1), output.size(2)))
+            result = decoded.view(output.size(0)*output.size(1), -1)
+        else:
+            result = output
 
-        #  result = output.view(output.size(0)*output.size(1), output.size(2))
         if return_h:
             return result, hidden, raw_outputs, outputs
         return result, hidden
 
     def init_hidden(self, bsz):
         weight = next(self.parameters()).data
-        # print ('in var init hidden: ', bsz)
         if self.rnn_type == 'LSTM':
             return [(Variable(weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_()),
                      Variable(weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_()))

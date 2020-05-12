@@ -3,19 +3,17 @@ import math
 import numpy as np
 import torch.nn as nn
 import torch.nn.utils
+import torch
 import time
-from awd_lstm.model import RNNModel
-from awd_lstm.attention_model import RNNAttentionModel
-from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, model_load
+from hierarchial_model.model import hierarchial_model
+from rnn_model.utils import batchify, get_batch, repackage_hidden, model_save, model_load
 
-def get_model(corpus, args, attention_model = False):
-    n_tokens = len(corpus.dictionary)
-    if attention_model:
-        model = RNNAttentionModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
-                     args["dropoute"], args["wdrop"], args["tied"], is_cuda = args["cuda"])
-    else:
-        model = RNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"],
-                     args["dropoute"], args["wdrop"], args["tied"])
+def shuffle(train_data):
+    idx = torch.randperm(train_data.size(1))
+    return train_data[:, idx]
+
+def get_model(corpus, model_subtype_to_word, model_type_to_subtype, model_type, args, attention_model = False):
+    model = hierarchial_model(model_subtype_to_word, model_type_to_subtype, model_type)
     criterion = nn.CrossEntropyLoss()
     if args["cuda"]:
         model = model.cuda()
@@ -45,7 +43,7 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
     if args["model_type"]== 'QRNN': model.reset()
     total_loss = 0
     start_time = time.time()
-    train_data = batchify(corpus.train, args["batch_size"], args)
+    train_data = shuffle(batchify(corpus.train, args["batch_size"], args))
     hidden = model.init_hidden(args["batch_size"])
     batch, i = 0, 0
     while i < train_data.size(0) - 1 - 1:
@@ -148,12 +146,12 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
                    optimizer = torch.optim.ASGD(model.parameters(), lr=args["lr"], t0=0, lambd=0.,
                                                 weight_decay=args["wdecay"])
 
-                #  if epoch in args.when:
-                #      print('Saving model before learning rate decreased')
-                #      #  model_save('{}.e{}'.format(save_path, epoch))
-                #      model_save('{}.e{}'.format(save_path, epoch) , model, criterion, optimizer)
-                #      print('Dividing learning rate by 10')
-                #      optimizer.param_groups[0]['lr'] /= 10.
+                if "when" in args and epoch in args["when"]:
+                    print('Saving model before learning rate decreased')
+                    #  model_save('{}.e{}'.format(save_path, epoch))
+                    model_save('{}.e{}'.format(save_path, epoch) , model, criterion, optimizer)
+                    print('Dividing learning rate by 10')
+                    optimizer.param_groups[0]['lr'] /= 10.
 
                 best_val_loss.append(val_loss)
 

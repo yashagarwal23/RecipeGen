@@ -4,16 +4,18 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.utils
 import time
-from entity_composite.model import EntityCompositeRNNModel
-from entity_composite.attention_model import EntityCompositeAttentionRNNModel
-from awd_lstm.utils import batchify, get_batch, repackage_hidden, model_save, model_load
+from double_input_rnn_model.model import RNNModelDoubleInput
+from rnn_model.utils import batchify, repackage_hidden, model_save, model_load
+
+
+def get_batch(source, i, args, seq_len=None, evaluation=False):
+    seq_len = min(seq_len if seq_len else args["bptt"], len(source) - 1 - i)
+    data = source[i:i+seq_len]
+    return data
 
 def get_model(corpus, args, attention_model = False):
     n_tokens = len(corpus.dictionary)
-    if attention_model :
-        model = EntityCompositeAttentionRNNModel(n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args['tied'], args['cuda'])
-    else:
-        model = EntityCompositeRNNModel(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args["tied"])
+    model = RNNModelDoubleInput(args["model_type"], n_tokens, args["embedding_size"], args["nhid"], args["num_layers"], args["dropout"], args["dropouth"], args["dropouti"], args["dropoute"], args["wdrop"], args["tied"])
     criterion = nn.CrossEntropyLoss()
     if args["cuda"]:
         model = model.cuda()
@@ -21,31 +23,29 @@ def get_model(corpus, args, attention_model = False):
     params = list(model.parameters()) + list(criterion.parameters())
     return model, criterion, params
 
-def evaluate(model, criterion, args, data_source, data_source2, batch_size=10):
+def evaluate(model, criterion, args, data_source, data_source2, target_data, batch_size=10):
     # Turn on evaluation mode which disables dropout.
     model.eval()
     if args["model_type"]== 'QRNN':
         model.reset()
     total_loss = 0
     hidden = model.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args["bptt"]):
+    for i in range(0, data_source.size(0) - 1 - 1, args["bptt"]):
         if model.is_attention_model():
             model.reset_last_layer()
-        data, targets = get_batch(data_source, i, args, evaluation=True)
-        data2, targets2 = get_batch(data_source2, i, args, evaluation=True)
+        data = get_batch(data_source, i, args, evaluation=True)
+        data2 = get_batch(data_source2, i+1, args, evaluation=True)
+        targets = get_batch(target_data, i+1, args, evaluation=True).view(-1)
         output, hidden = model(data, data2, hidden)
-        #  total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         total_loss += len(data) * criterion(output, targets).data
         hidden = repackage_hidden(hidden)
     return total_loss.item() / len(data_source)
 
-def train(model, corpus, optimizer, criterion, params, epoch, args):
+def train(model, train_data, train_data2, target_data, optimizer, criterion, params, epoch, args):
     # Turn on training mode which enables dropout.
     if args["model_type"]== 'QRNN': model.reset()
     total_loss = 0
     start_time = time.time()
-    train_data = batchify(corpus.train, args["batch_size"], args)
-    train_data2 = batchify(corpus.train_type, args["batch_size"], args)
     hidden = model.init_hidden(args["batch_size"])
     batch, i = 0, 0
     while i < train_data.size(0) - 1 - 1:
@@ -60,8 +60,9 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
         lr2 = optimizer.param_groups[0]['lr']
         optimizer.param_groups[0]['lr'] = lr2 * seq_len / args["bptt"]
         model.train()
-        data, targets = get_batch(train_data, i, args, seq_len=seq_len)
-        data2, targets2 = get_batch(train_data2, i, args, seq_len=seq_len)
+        data = get_batch(train_data, i, args, seq_len=seq_len)
+        data2 = get_batch(train_data2, i+1, args, seq_len=seq_len)
+        targets = get_batch(target_data, i+1, args, seq_len=seq_len).view(-1)
         # Starting each batch, we detach the hidden state from how it was previously produced.
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
         hidden = repackage_hidden(hidden)
@@ -95,14 +96,21 @@ def train(model, corpus, optimizer, criterion, params, epoch, args):
         ###
         batch += 1
         i += seq_len
-        del data, data2, targets, targets2, raw_loss
+        del data, data2, targets, raw_loss
 
 def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path):
-    val_data = batchify(corpus.valid, args["eval_batch_size"], args)
-    test_data = batchify(corpus.test, args["test_batch_size"], args)
+    val_data = batchify(corpus.valid, args["eval_batch_size"], args)[:-1]
+    test_data = batchify(corpus.test, args["test_batch_size"], args)[:-1]
+    train_data = batchify(corpus.train, args["batch_size"], args)[:-1]
 
-    val_data2 = batchify(corpus.valid_type, args["eval_batch_size"], args)
-    test_data2 = batchify(corpus.test_type, args["test_batch_size"], args)
+    val_data2 = batchify(corpus.valid2, args["eval_batch_size"], args)
+    test_data2 = batchify(corpus.test2, args["test_batch_size"], args)
+    train_data2 = batchify(corpus.train2, args["batch_size"], args)
+
+    target_valid = batchify(corpus.target_valid, args["eval_batch_size"], args)
+    target_test = batchify(corpus.target_test, args["eval_batch_size"], args)
+    target_train = batchify(corpus.target_train, args["batch_size"], args)
+
 
     best_val_loss = []
     stored_loss = 100000000
@@ -110,14 +118,14 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
     try:
         for epoch in range(1, args["epochs"]+ 1):
             epoch_start_time = time.time()
-            train(model, corpus, optimizer, criterion, params, epoch, args)
+            train(model, train_data, train_data2, target_train, optimizer, criterion, params, epoch, args)
             if 't0' in optimizer.param_groups[0]:
                 tmp = {}
                 for prm in model.parameters():
                     tmp[prm] = prm.data.clone()
                     prm.data = optimizer.state[prm]['ax'].clone()
 
-                val_loss2 = evaluate(model, criterion, args, val_data, val_data2)
+                val_loss2 = evaluate(model, criterion, args, val_data, val_data2, target_valid)
                 print('-' * 89)
                 print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                       'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
@@ -133,7 +141,7 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
                     prm.data = tmp[prm].clone()
 
             else:
-                val_loss = evaluate(model, criterion, args, val_data, val_data2, args["eval_batch_size"])
+                val_loss = evaluate(model, criterion, args, val_data, val_data2, target_valid, args["eval_batch_size"])
                 print('-' * 89)
                 print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                       'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
@@ -151,12 +159,12 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
                    optimizer = torch.optim.ASGD(model.parameters(), lr=args["lr"], t0=0, lambd=0.,
                                                 weight_decay=args["wdecay"])
 
-                #  if epoch in args.when:
-                #      print('Saving model before learning rate decreased')
-                #      #  model_save('{}.e{}'.format(save_path, epoch))
-                #      model_save('{}.e{}'.format(save_path, epoch) , model, criterion, optimizer)
-                #      print('Dividing learning rate by 10')
-                #      optimizer.param_groups[0]['lr'] /= 10.
+                if "when" in args and epoch in args["when"]:
+                    print('Saving model before learning rate decreased')
+                    #  model_save('{}.e{}'.format(save_path, epoch))
+                    model_save('{}.e{}'.format(save_path, epoch) , model, criterion, optimizer)
+                    print('Dividing learning rate by 10')
+                    optimizer.param_groups[0]['lr'] /= 10.
 
                 best_val_loss.append(val_loss)
 
@@ -169,7 +177,7 @@ def train_and_eval(model, corpus, optimizer, criterion, params, args, save_path)
         model_state_dict, criterion, params = model_load(save_path)
         model.load_state_dict(model_state_dict)
         # Run on test data.
-        test_loss = evaluate(model, criterion, args, test_data, test_data2, args["test_batch_size"])
+        test_loss = evaluate(model, criterion, args, test_data, test_data2, target_test, args["test_batch_size"])
         print('=' * 89)
         print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
             test_loss, math.exp(test_loss), test_loss / math.log(2)))

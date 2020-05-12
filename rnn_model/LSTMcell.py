@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.nn import Parameter
-from entity_composite.decoder_functions import attention_combined as decoder_function
+from rnn_model.decoder_functions import attention_combined as decoder_function
 
 class LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, bias=True, attention=False, is_cuda = False):
