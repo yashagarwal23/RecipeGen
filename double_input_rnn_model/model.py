@@ -59,6 +59,9 @@ class RNNModelDoubleInput(nn.Module):
         self.dropoute = dropoute
         self.tie_weights = tie_weights
 
+        self.hidden_param_list = [self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid) for l in range(self.nlayers)]
+        self.num_hidden_params = sum(self.hidden_param_list)
+
     def is_attention_model(self):
         return False
 
@@ -72,10 +75,13 @@ class RNNModelDoubleInput(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, input2, hidden, return_h=False, emb_inp=False, emb_out=False):
-        emb = embedded_dropout(self.encoder, input,
+    def forward(self, input, input2, hidden, return_h=False, emb_inp1=False, emb_inp2=False, emb_out=False):
+        if emb_inp1:
+            emb = input
+        else:
+            emb = embedded_dropout(self.encoder, input,
                                dropout=self.dropoute if self.training else 0)
-        if emb_inp:
+        if emb_inp2:
             emb2 = input2
         else:
             emb2 = embedded_dropout(self.encoder, input2,
@@ -126,3 +132,7 @@ class RNNModelDoubleInput(nn.Module):
         elif self.rnn_type == 'QRNN' or self.rnn_type == 'GRU':
             return [Variable(weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_())
                     for l in range(self.nlayers)]
+
+    def init_hidden_from_encoder(self, hidden):
+        hidden = hidden.unsqueeze(0)
+        return list(torch.split(hidden, self.hidden_param_list, dim=2))

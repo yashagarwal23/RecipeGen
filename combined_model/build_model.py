@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.utils
 import torch
 import time
-from hierarchial_model.model import hierarchial_model
+from combined_model.model import combined_model
 from rnn_model.utils import batchify, get_batch, repackage_hidden, model_save, model_load
 from double_input_rnn_model.build_model import get_model as get_double_input_rnn_model
 from rnn_model.build_model import get_model as get_rnn_model
@@ -14,15 +14,13 @@ def shuffle(train_data):
     idx = torch.randperm(train_data.size(1))
     return train_data[:, idx]
 
-def get_model(corpus, model_subtype_to_word, model_type_to_subtype, model_type, args, attention_model = False):
-    if model_subtype_to_word == None:
-        model_subtype_to_word = get_double_input_rnn_model(corpus, args)
-    if model_type_to_subtype == None:
-        model_type_to_subtype = get_double_input_rnn_model(corpus, args)
+def get_model(corpus, model_type_to_word, model_type, args, attention_model = False):
+    if model_type_to_word == None:
+        model_type_to_word = get_double_input_rnn_model(corpus, args)
     if model_type == None:
         model_type = get_rnn_model(corpus, args)
   
-    model = hierarchial_model(model_subtype_to_word, model_type_to_subtype, model_type)
+    model = combined_model(model_type_to_word, model_type)
     criterion = nn.CrossEntropyLoss()
     if args["cuda"]:
         model = model.cuda()

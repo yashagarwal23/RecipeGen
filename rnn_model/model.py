@@ -57,6 +57,10 @@ class RNNModel(nn.Module):
         self.dropoute = dropoute
         self.tie_weights = tie_weights
         self.attetion = False
+        self.hidden_param_list = [self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid) for l in range(self.nlayers)]
+        self.num_hidden_params = sum(self.hidden_param_list)
+
+
 
     def is_attention_model(self):
         return self.attetion
@@ -70,8 +74,12 @@ class RNNModel(nn.Module):
         self.decoder.bias.data.fill_(0)
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, input, hidden, return_h=False, emb_out=False):
-        emb = embedded_dropout(self.encoder, input, dropout=self.dropoute if self.training else 0)
+    def forward(self, input, hidden, return_h=False, emb_out=False, emb_inp=False):
+        if emb_inp:
+            emb = input
+        else:
+            emb = embedded_dropout(self.encoder, input, 
+                                    dropout=self.dropoute if self.training else 0)
         #emb = self.idrop(emb)
         emb = self.lockdrop(emb, self.dropouti)
 
@@ -113,3 +121,7 @@ class RNNModel(nn.Module):
         elif self.rnn_type == 'QRNN' or self.rnn_type == 'GRU':
             return [weight.new(1, bsz, self.nhid if l != self.nlayers - 1 else (self.ninp if self.tie_weights else self.nhid)).zero_()
                     for l in range(self.nlayers)]
+
+    def init_hidden_from_encoder(self, hidden):
+        hidden = hidden.unsqueeze(0)
+        return list(torch.split(hidden, self.hidden_param_list, dim=2))

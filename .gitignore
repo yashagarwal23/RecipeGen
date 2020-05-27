@@ -1,8 +1,10 @@
 __pycache__/
-corpus/
-recipe_data*/
-!recipe_data*/Readme.md
-models*/
+corpus/*
+recipe_data/*
+models/*
+!corpus/Readme.md
+!recipe_data/Readme.md
+!models/Readme.md
 *.pt
 test.py
 *.zip
